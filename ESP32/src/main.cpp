@@ -1,273 +1,489 @@
-// src/main.cpp  (ESP32 - VOX EFX V4)
-// TFT: ST7796 via TFT_eSPI
-// UART0: ESP32 <-> Teensy (TX0/RX0)
-// Meters: 2 segmented bars (INPUT/OUTPUT): 5 green, 2 amber, 1 red
-// Encoder: adjusts pending level; press sends VOL,<pct>\n to Teensy
-// Teensy sends: LVL,<pct>\n  and  MTR,<inSeg>,<outSeg>\n
-
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 #include <string.h>
+#include <stdlib.h>
 
-// ---------- Pins (from your schematic) ----------
-static const int PIN_ENC_A  = 35;  // ENC_A
-static const int PIN_ENC_B  = 34;  // ENC_B
-static const int PIN_ENC_SW = 25;  // ENC_SW (active low)
+// ---------------- Pins ----------------
+static const int PIN_ENC_A  = 35;
+static const int PIN_ENC_B  = 34;
+static const int PIN_ENC_SW = 25;   // active low (we WILL use this as fallback)
 
-// ---------- TFT ----------
+// ---------------- TFT ----------------
 TFT_eSPI tft;
 
-// ---------- Encoder ----------
+// ---------------- Layout constants ----------------
+// LEDs
+static const int UI_LED_COMMS_X = 15;
+static const int UI_LED_COMMS_Y = 15;
+static const int UI_LED_DLY_X   = 15;
+static const int UI_LED_DLY_Y   = 35;
+
+// Labels
+static const int UI_LABEL_X     = 10;
+static const int UI_INPUT_LBL_Y = 60;
+static const int UI_OUT_LBL_Y   = 90;
+
+// Meter bars
+static const int UI_METER_X     = 88;
+static const int UI_IN_METER_Y  = 58;
+static const int UI_OUT_METER_Y = 88;
+
+// Volume / Delay text
+static const int UI_VOL_LBL_Y   = 145;
+static const int UI_DLY_LBL_Y   = 175;
+static const int UI_VOL_VAL_X   = 120;
+static const int UI_VOL_VAL_Y   = 145;
+static const int UI_VOL_RPT_X   = 220;
+static const int UI_VOL_RPT_Y   = 145;
+static const int UI_DLY_VAL_X   = 120;
+static const int UI_DLY_VAL_Y   = 175;
+
+// Debug panel (bottom area)
+static const int UI_DBG_X       = 10;
+static const int UI_DBG_Y0      = 210;
+static const int UI_DBG_LINE_H  = 22;
+
+// ---- "Button" area: DRY channel toggle ----
+static const int UI_BTN_X = 240;
+static const int UI_BTN_Y = 6;
+static const int UI_BTN_W = 150;
+static const int UI_BTN_H = 40;
+
+// ---------------- Encoder smoothing ----------------
 volatile int encDelta = 0;
-int pendingLevel = 50;         // what user is adjusting
-int teensyLevel  = -1;         // what Teensy reports (authoritative)
+int encAccum = 0;
 
-// ---------- UART RX line buffer ----------
-static char rxLine[64];
+int volume = 50;
+int teensyVolume = -1;
+
+static const int ENC_STEP = 2;
+static const int ENC_DEADBAND = 2;
+static const uint32_t VOL_TX_PERIOD_MS = 40;
+
+// Encoder button debounce
+static uint32_t lastBtnMs = 0;
+static const uint32_t BTN_DEBOUNCE_MS = 220;
+
+// ---------------- UART ----------------
+static char rxLine[128];
 static size_t rxLen = 0;
-uint32_t lastTeensyRxMs = 0;
+uint32_t lastRxMs = 0;
 
-// ---------- Meter values from Teensy ----------
-int inSeg = 0;     // 0..8
-int outSeg = 0;    // 0..8
-uint32_t lastMtrRxMs = 0;
+// ---------------- Meters ----------------
+int inSeg = 0;
+int outSeg = 0;
 
-// ---------- UI update control ----------
-int lastShownPending = -999;
-int lastShownTeensy  = -999;
-static int lastInSeg  = -1;
-static int lastOutSeg = -1;
+// ---------------- Delay ----------------
+int delayOn = 0;
+
+// ---------------- Dry Channel ----------------
+int dryChan = 0;        // 0 or 2 (from Teensy)
+int lastDryChanShown = -1;
+
+// ---------------- Debug telemetry ----------------
+float dbgDry = -1.0f;
+float dbgWet = -1.0f;
+int   dbgDtMs = -1;
+float dbgPki = -1.0f;
+float dbgPkd = -1.0f;
+float dbgPks = -1.0f;
+float dbgPko = -1.0f;
+bool  dbgSeen = false;
+
+// ---------------- UI state ----------------
+int lastVolShown = -999;
+int lastTeensyVolShown = -999;
+int lastInSeg = -1;
+int lastOutSeg = -1;
+int lastDelayShown = -1;
+bool lastCommsGood = false;
+
 uint32_t lastUiMs = 0;
-
-// ---------- Button debounce ----------
-uint32_t lastBtnMs = 0;
-const uint32_t BTN_DEBOUNCE_MS = 180;
+uint32_t lastVolTxMs = 0;
+uint32_t lastTouchMs = 0;
 
 // ---------------- ISR ----------------
 IRAM_ATTR void isrEncA() {
   int a = digitalRead(PIN_ENC_A);
   int b = digitalRead(PIN_ENC_B);
-  // If direction feels backwards, swap the ++/--
   if (a == b) encDelta++;
   else        encDelta--;
 }
 
 // ---------------- UI helpers ----------------
-void drawStaticUI() {
-  tft.fillScreen(TFT_BLACK);
-
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.setTextSize(2);
-  tft.setCursor(10, 10);
-  tft.print("VOX EFX V4");
-
-  // Labels for meters
-  tft.setCursor(10, 45);
-  tft.print("INPUT");
-  tft.setCursor(10, 125);
-  tft.print("OUTPUT");
-
-  // Numeric status area
-  tft.setCursor(10, 205);
-  tft.print("Pending:");
-  tft.setCursor(10, 235);
-  tft.print("Teensy :");
-  tft.setCursor(10, 265);
-  tft.print("MTR age:");
-
-  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
-  tft.setCursor(10, 295);
-  tft.print("Press encoder to send VOL");
+void drawLed(int x, int y, uint16_t color) {
+  tft.fillCircle(x, y, 6, color);
 }
 
-void drawValueAt(int x, int y, int value, uint16_t color, int widthChars = 4) {
-  // Overwrite a small region where numbers live
-  int pxW = 12 * widthChars; // approx for textSize(2)
-  int pxH = 16 * 2;
-  tft.fillRect(x, y, pxW, pxH, TFT_BLACK);
-
-  tft.setTextSize(2);
+void drawValue(int x, int y, int v, uint16_t color) {
+  tft.fillRect(x, y, 80, 30, TFT_BLACK);
   tft.setTextColor(color, TFT_BLACK);
   tft.setCursor(x, y);
-  if (value < 0) tft.print("--");
-  else tft.print(value);
+  if (v < 0) tft.print("--");
+  else tft.print(v);
 }
 
-void drawAgeAt(int x, int y, uint32_t ageMs, uint16_t color) {
-  tft.fillRect(x, y, 160, 32, TFT_BLACK);
-  tft.setTextSize(2);
+void drawValueFloat(int x, int y, float v, uint16_t color, int widthPx = 160) {
+  tft.fillRect(x, y, widthPx, 20, TFT_BLACK);
   tft.setTextColor(color, TFT_BLACK);
   tft.setCursor(x, y);
-  tft.print(ageMs);
+  if (v < 0.0f) tft.print("--");
+  else tft.print(v, 2);
+}
+
+void drawTextField(int x, int y, const char* s, uint16_t color, int widthPx = 200) {
+  tft.fillRect(x, y, widthPx, 20, TFT_BLACK);
+  tft.setTextColor(color, TFT_BLACK);
+  tft.setCursor(x, y);
+  tft.print(s);
 }
 
 void drawSegmentMeter(int x, int y, int segLit) {
-  const int segCount = 8;
-  const int segW = 28;
-  const int segH = 22;
-  const int gap  = 6;
+  const int segW = 26, segH = 22, gap = 4;
 
-  for (int i = 1; i <= segCount; i++) {
+  for (int i = 1; i <= 8; i++) {
     int sx = x + (i - 1) * (segW + gap);
-    int sy = y;
+    uint16_t color =
+      (i <= 5) ? TFT_GREEN :
+      (i <= 7) ? TFT_ORANGE :
+                 TFT_RED;
 
-    uint16_t onColor;
-    if (i <= 5) onColor = TFT_GREEN;
-    else if (i <= 7) onColor = TFT_ORANGE;
-    else onColor = TFT_RED;
-
-    bool lit = (i <= segLit);
-    if (lit) {
-      tft.fillRoundRect(sx, sy, segW, segH, 4, onColor);
-      tft.drawRoundRect(sx, sy, segW, segH, 4, onColor);
-    } else {
-      tft.fillRoundRect(sx, sy, segW, segH, 4, TFT_BLACK);
-      tft.drawRoundRect(sx, sy, segW, segH, 4, TFT_DARKGREY);
-    }
+    bool on = (i <= segLit);
+    tft.fillRoundRect(sx, y, segW, segH, 4, on ? color : TFT_BLACK);
+    tft.drawRoundRect(sx, y, segW, segH, 4, on ? color : TFT_DARKGREY);
   }
 }
 
-void drawMetersIfChanged() {
-  // meter segments
-  if (inSeg != lastInSeg) {
-    lastInSeg = inSeg;
-    drawSegmentMeter(90, 70, inSeg);   // INPUT meter bar
-  }
-  if (outSeg != lastOutSeg) {
-    lastOutSeg = outSeg;
-    drawSegmentMeter(90, 150, outSeg); // OUTPUT meter bar
-  }
+void drawDryChanButton() {
+  // Frame
+  tft.drawRoundRect(UI_BTN_X, UI_BTN_Y, UI_BTN_W, UI_BTN_H, 8, TFT_DARKGREY);
 
-  // comms age indicator
-  uint32_t age = (lastMtrRxMs == 0) ? 999999UL : (millis() - lastMtrRxMs);
-  uint16_t ageColor = (age < 300) ? TFT_GREEN : TFT_RED;
-  drawAgeAt(120, 265, age, ageColor);
+  // Fill
+  uint16_t fill = (dryChan == 2) ? TFT_DARKGREY : TFT_BLACK;
+  tft.fillRoundRect(UI_BTN_X + 1, UI_BTN_Y + 1, UI_BTN_W - 2, UI_BTN_H - 2, 8, fill);
+
+  // Text
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, fill);
+  tft.setCursor(UI_BTN_X + 10, UI_BTN_Y + 10);
+  tft.print("DRY ");
+  tft.print((dryChan == 2) ? "CH2" : "CH0");
 }
 
-// ---------------- UART ----------------
-void sendPendingToTeensy() {
-  pendingLevel = constrain(pendingLevel, 0, 100);
+static bool pointInRect(int x, int y, int rx, int ry, int rw, int rh) {
+  return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
+}
+
+void drawStaticUI() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setRotation(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  // Labels
+  tft.setCursor(UI_LABEL_X, UI_INPUT_LBL_Y);  tft.print("INPUT");
+  tft.setCursor(UI_LABEL_X, UI_OUT_LBL_Y);    tft.print("OUTPUT");
+
+  tft.setCursor(UI_LABEL_X, UI_VOL_LBL_Y);    tft.print("Volume:");
+  tft.setCursor(UI_LABEL_X, UI_DLY_LBL_Y);    tft.print("Delay :");
+
+  // Meter frames
+  tft.drawRoundRect(UI_METER_X - 3, UI_IN_METER_Y - 2, 8 * 26 + 7 * 4 + 6, 22 + 4, 6, TFT_DARKGREY);
+  tft.drawRoundRect(UI_METER_X - 3, UI_OUT_METER_Y - 2, 8 * 26 + 7 * 4 + 6, 22 + 4, 6, TFT_DARKGREY);
+
+  // Legend
+  tft.setCursor(30, 8);  tft.print("COMMS");
+  tft.setCursor(30, 28); tft.print("DELAY");
+
+  // Dry button
+  drawDryChanButton();
+
+  // Debug header + labels
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setCursor(UI_DBG_X, UI_DBG_Y0);
+  tft.print("DBG:");
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 1);
+  tft.print("DRYCH:");
+  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 1);
+  tft.print("DT(ms):");
+
+  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 2);
+  tft.print("DRY:");
+  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 2);
+  tft.print("WET:");
+
+  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 3);
+  tft.print("PKI:");
+  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 3);
+  tft.print("PKD:");
+
+  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 4);
+  tft.print("PKS:");
+  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 4);
+  tft.print("PKO:");
+}
+
+// ---------------- UART helpers ----------------
+void sendVolume() {
+  uint32_t now = millis();
+  if (now - lastVolTxMs < VOL_TX_PERIOD_MS) return;
+  lastVolTxMs = now;
+
   Serial.print("VOL,");
-  Serial.print(pendingLevel);
+  Serial.print(volume);
   Serial.print("\n");
 }
 
-void processUartLine(const char* line) {
-  // LVL,<0-100>
-  if (strncmp(line, "LVL", 3) == 0) {
-    const char* p = line + 3;
-    while (*p && (*p == ',' || *p == ':' || *p == ' ')) p++;
-    int v = atoi(p);
-    if (v >= 0 && v <= 100) {
-      teensyLevel = v;
-      lastTeensyRxMs = millis();
-    }
+void requestDryChan(int target) {
+  target = (target == 2) ? 2 : 0;
+  Serial.print("CH,");
+  Serial.print(target);
+  Serial.print("\n");
+}
+
+void toggleDryChanRequest() {
+  int target = (dryChan == 2) ? 0 : 2;
+  requestDryChan(target);
+
+  // optimistic UI update; Teensy will confirm via CH/DBG
+  dryChan = target;
+  drawDryChanButton();
+}
+
+static bool parseKeyFloat(const char* line, const char* key, float &outVal) {
+  const char* p = strstr(line, key);
+  if (!p) return false;
+  p += strlen(key);
+  if (*p != '=') return false;
+  p++;
+  outVal = (float)atof(p);
+  return true;
+}
+
+static bool parseKeyInt(const char* line, const char* key, int &outVal) {
+  const char* p = strstr(line, key);
+  if (!p) return false;
+  p += strlen(key);
+  if (*p != '=') return false;
+  p++;
+  outVal = atoi(p);
+  return true;
+}
+
+void processLine(const char* line) {
+  lastRxMs = millis();
+
+  if (!strncmp(line, "LVL", 3)) {
+    teensyVolume = atoi(line + 4);
     return;
   }
 
-  // MTR,<inSeg>,<outSeg>
-  if (strncmp(line, "MTR", 3) == 0) {
-    const char* p = line + 3;
-    while (*p && (*p == ',' || *p == ':' || *p == ' ')) p++;
-    int a = atoi(p);
-    const char* c = strchr(p, ',');
-    int b = c ? atoi(c + 1) : -1;
+  if (!strncmp(line, "MTR", 3)) {
+    inSeg  = atoi(line + 4);
+    const char* c = strchr(line + 4, ',');
+    if (c) outSeg = atoi(c + 1);
+    return;
+  }
 
-    if (a >= 0 && a <= 8 && b >= 0 && b <= 8) {
-      inSeg = a;
-      outSeg = b;
-      lastMtrRxMs = millis();
-    }
+  if (!strncmp(line, "DLY", 3)) {
+    delayOn = atoi(line + 4);
+    return;
+  }
+
+  // CH,<0|2>
+  if (!strncmp(line, "CH", 2)) {
+    dryChan = atoi(line + 3);
+    if (dryChan != 2) dryChan = 0;
+    return;
+  }
+
+  // DBG,DRYCH=0,DRY=1.00,WET=0.00,DT=180,PKI=0.12,PKD=0.05,PKS=0.10,PKO=0.09
+  if (!strncmp(line, "DBG", 3)) {
+    parseKeyInt(line, "DRYCH", dryChan);
+    if (dryChan != 2) dryChan = 0;
+
+    parseKeyFloat(line, "DRY",  dbgDry);
+    parseKeyFloat(line, "WET",  dbgWet);
+    parseKeyInt  (line, "DT",   dbgDtMs);
+    parseKeyFloat(line, "PKI",  dbgPki);
+    parseKeyFloat(line, "PKD",  dbgPkd);
+    parseKeyFloat(line, "PKS",  dbgPks);
+    parseKeyFloat(line, "PKO",  dbgPko);
+
+    dbgSeen = true;
     return;
   }
 }
 
 void pollUart() {
   while (Serial.available()) {
-    char c = (char)Serial.read();
+    char c = Serial.read();
     if (c == '\r') continue;
 
     if (c == '\n') {
-      rxLine[rxLen] = '\0';
-      if (rxLen > 0) processUartLine(rxLine);
+      rxLine[rxLen] = 0;
+      if (rxLen) processLine(rxLine);
       rxLen = 0;
-    } else {
-      if (rxLen < sizeof(rxLine) - 1) rxLine[rxLen++] = c;
-      else rxLen = 0; // overflow reset
+    } else if (rxLen < sizeof(rxLine) - 1) {
+      rxLine[rxLen++] = c;
     }
   }
 }
 
-// ---------------- Setup / Loop ----------------
+// ---------------- Optional Touch (compile-safe) ----------------
+// TFT_eSPI only provides getTouch() if touch is enabled in User_Setup.h.
+// We'll compile touch code ONLY when TOUCH_CS is defined.
+void pollTouch() {
+#if defined(TOUCH_CS)
+  uint16_t tx, ty;
+  if (!tft.getTouch(&tx, &ty)) return;
+
+  uint32_t now = millis();
+  if (now - lastTouchMs < 250) return;
+  lastTouchMs = now;
+
+  if (pointInRect((int)tx, (int)ty, UI_BTN_X, UI_BTN_Y, UI_BTN_W, UI_BTN_H)) {
+    toggleDryChanRequest();
+  }
+#else
+  // No touch compiled in. Use encoder press fallback.
+  (void)lastTouchMs;
+#endif
+}
+
+// ---------------- Encoder button fallback ----------------
+void pollEncButton() {
+  uint32_t now = millis();
+  if (digitalRead(PIN_ENC_SW) == LOW && (now - lastBtnMs) > BTN_DEBOUNCE_MS) {
+    lastBtnMs = now;
+    toggleDryChanRequest();
+  }
+}
+
+// ---------------- Setup ----------------
 void setup() {
   pinMode(PIN_ENC_A, INPUT_PULLUP);
   pinMode(PIN_ENC_B, INPUT_PULLUP);
   pinMode(PIN_ENC_SW, INPUT_PULLUP);
 
-  // UART0 to Teensy
   Serial.begin(115200);
 
-  // TFT
   tft.init();
-  tft.setRotation(1);
   drawStaticUI();
 
-  // Draw initial meters (all off)
-  drawSegmentMeter(90, 70, 0);
-  drawSegmentMeter(90, 150, 0);
+  drawLed(UI_LED_COMMS_X, UI_LED_COMMS_Y, TFT_DARKGREY);
+  drawLed(UI_LED_DLY_X, UI_LED_DLY_Y, TFT_DARKGREY);
+
+  drawSegmentMeter(UI_METER_X, UI_IN_METER_Y, 0);
+  drawSegmentMeter(UI_METER_X, UI_OUT_METER_Y, 0);
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_A), isrEncA, CHANGE);
 }
 
+// ---------------- Loop ----------------
 void loop() {
   pollUart();
+  pollTouch();
+  pollEncButton();
 
-  // apply encoder movement
-  int d = 0;
+  uint32_t now = millis();
+
+  // -------- Encoder smoothing --------
+  int d;
   noInterrupts();
   d = encDelta;
   encDelta = 0;
   interrupts();
 
-  if (d != 0) {
-    pendingLevel = constrain(pendingLevel + d, 0, 100);
+  encAccum += d;
+  if (abs(encAccum) >= ENC_DEADBAND) {
+    int steps = encAccum / ENC_DEADBAND;
+    encAccum -= steps * ENC_DEADBAND;
+
+    volume = constrain(volume + steps * ENC_STEP, 0, 100);
+    sendVolume();
   }
 
-  // button press commits pending to Teensy
-  uint32_t now = millis();
-  if (digitalRead(PIN_ENC_SW) == LOW && (now - lastBtnMs) > BTN_DEBOUNCE_MS) {
-    lastBtnMs = now;
-    sendPendingToTeensy();
-  }
-
-  // UI refresh at ~20 Hz max
+  // -------- UI refresh --------
   if (now - lastUiMs > 50) {
     lastUiMs = now;
 
-    // Numeric displays
-    if (pendingLevel != lastShownPending) {
-      lastShownPending = pendingLevel;
-      drawValueAt(120, 205, pendingLevel, TFT_YELLOW);
-    }
-    if (teensyLevel != lastShownTeensy) {
-      lastShownTeensy = teensyLevel;
-      drawValueAt(120, 235, teensyLevel, TFT_CYAN);
+    // Comms LED
+    bool commsGood = (now - lastRxMs) < 300;
+    if (commsGood != lastCommsGood) {
+      lastCommsGood = commsGood;
+      drawLed(UI_LED_COMMS_X, UI_LED_COMMS_Y, commsGood ? TFT_GREEN : TFT_DARKGREY);
     }
 
-    // Optional LVL RX age (small, white/red)
-    uint32_t ageLvl = (lastTeensyRxMs == 0) ? 999999UL : (now - lastTeensyRxMs);
-    uint16_t lvlColor = (ageLvl < 1200) ? TFT_WHITE : TFT_RED;
-    // show it to the right of "Teensy :" as a subtle indicator
-    tft.fillRect(200, 235, 110, 32, TFT_BLACK);
-    tft.setTextSize(2);
-    tft.setTextColor(lvlColor, TFT_BLACK);
-    tft.setCursor(200, 235);
-    tft.print("(");
-    tft.print(ageLvl);
-    tft.print(")");
+    // Delay LED + value
+    if (delayOn != lastDelayShown) {
+      lastDelayShown = delayOn;
+      drawLed(UI_LED_DLY_X, UI_LED_DLY_Y, delayOn ? TFT_GREEN : TFT_DARKGREY);
+      drawValue(UI_DLY_VAL_X, UI_DLY_VAL_Y, delayOn ? 1 : 0, delayOn ? TFT_GREEN : TFT_LIGHTGREY);
+    }
 
-    // Meter bars + meter RX age
-    drawMetersIfChanged();
+    // Volume displays
+    if (volume != lastVolShown) {
+      lastVolShown = volume;
+      drawValue(UI_VOL_VAL_X, UI_VOL_VAL_Y, volume, TFT_YELLOW);
+    }
+    if (teensyVolume != lastTeensyVolShown) {
+      lastTeensyVolShown = teensyVolume;
+      drawValue(UI_VOL_RPT_X, UI_VOL_RPT_Y, teensyVolume, TFT_CYAN);
+    }
+
+    // Meters
+    if (inSeg != lastInSeg) {
+      lastInSeg = inSeg;
+      drawSegmentMeter(UI_METER_X, UI_IN_METER_Y, inSeg);
+    }
+    if (outSeg != lastOutSeg) {
+      lastOutSeg = outSeg;
+      drawSegmentMeter(UI_METER_X, UI_OUT_METER_Y, outSeg);
+    }
+
+    // Dry button state refresh (if Teensy changed it)
+    if (dryChan != lastDryChanShown) {
+      lastDryChanShown = dryChan;
+      drawDryChanButton();
+    }
+
+    // ---- DEBUG PANEL ----
+    if (!dbgSeen) {
+      drawTextField(UI_DBG_X + 70,  UI_DBG_Y0 + UI_DBG_LINE_H * 1, "--", TFT_WHITE, 70);
+      drawTextField(UI_DBG_X + 240, UI_DBG_Y0 + UI_DBG_LINE_H * 1, "--", TFT_WHITE, 80);
+
+      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 2, "--", TFT_WHITE, 90);
+      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 2, "--", TFT_WHITE, 90);
+
+      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 3, "--", TFT_WHITE, 90);
+      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 3, "--", TFT_WHITE, 90);
+
+      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 4, "--", TFT_WHITE, 120);
+      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 4, "--", TFT_WHITE, 120);
+    } else {
+      // DRYCH + DT
+      char chBuf[8]; snprintf(chBuf, sizeof(chBuf), "%d", dryChan);
+      drawTextField(UI_DBG_X + 70,  UI_DBG_Y0 + UI_DBG_LINE_H * 1, chBuf, TFT_YELLOW, 70);
+
+      char dtBuf[16]; snprintf(dtBuf, sizeof(dtBuf), "%d", dbgDtMs);
+      drawTextField(UI_DBG_X + 240, UI_DBG_Y0 + UI_DBG_LINE_H * 1, dtBuf, TFT_YELLOW, 80);
+
+      // DRY / WET
+      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 2, dbgDry, TFT_CYAN, 90);
+      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 2, dbgWet, TFT_CYAN, 90);
+
+      // PKI / PKD
+      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 3, dbgPki, TFT_GREEN, 90);
+      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 3, dbgPkd, TFT_GREEN, 90);
+
+      // PKS / PKO
+      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 4, dbgPks, TFT_ORANGE, 120);
+      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 4, dbgPko, TFT_ORANGE, 120);
+    }
   }
 
   delay(2);
