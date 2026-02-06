@@ -1,106 +1,151 @@
+// ============================================================
+// VOX EFX - ESP32 UI Skeleton (CLEANED, BEST METHOD)
+// BEST METHOD: Minimal built-in FT6336U I2C reader (NO external touch library)
+//  - Works even if GitHub libraries disappear / rename headers
+//  - Reads FT6336U over Wire (I2C) at 0x38
+//
+//  - 5 pages (encoder nav + edit mode toggle)
+//  - Vertical meters always visible (IN left, OUT right)
+//  - CONFIG page with live Teensy DBG line (single-line window)
+//
+// TEMPORARY TEST CODE IS CLEARLY MARKED WITH:
+//   // >>> TEMP TOUCH TEST START
+//   // >>> TEMP TOUCH TEST END
+// Remove that block after touch mapping is confirmed.
+// ============================================================
+
 #include <Arduino.h>
 #include <TFT_eSPI.h>
-#include <string.h>
-#include <stdlib.h>
-
-// ---------------- Pins ----------------
-static const int PIN_ENC_A  = 35;
-static const int PIN_ENC_B  = 34;
-static const int PIN_ENC_SW = 25;   // active low (we WILL use this as fallback)
+#include <Wire.h>
 
 // ---------------- TFT ----------------
 TFT_eSPI tft;
 
-// ---------------- Layout constants ----------------
-// LEDs
-static const int UI_LED_COMMS_X = 15;
-static const int UI_LED_COMMS_Y = 15;
-static const int UI_LED_DLY_X   = 15;
-static const int UI_LED_DLY_Y   = 35;
+// ---------------- Pins ----------------
+static const int PIN_ENC_A  = 35;
+static const int PIN_ENC_B  = 34;
+static const int PIN_ENC_SW = 25;   // active low
 
-// Labels
-static const int UI_LABEL_X     = 10;
-static const int UI_INPUT_LBL_Y = 60;
-static const int UI_OUT_LBL_Y   = 90;
+// ---------------- Pages ----------------
+enum UiPage {
+  PAGE_FX1 = 0,
+  PAGE_FX2,
+  PAGE_FX3,
+  PAGE_FX4,
+  PAGE_CONFIG,
+  PAGE_COUNT
+};
 
-// Meter bars
-static const int UI_METER_X     = 88;
-static const int UI_IN_METER_Y  = 58;
-static const int UI_OUT_METER_Y = 88;
+UiPage currentPage   = PAGE_FX1;
+UiPage lastPage      = PAGE_COUNT;   // force redraw
+bool   editMode      = false;
+bool   lastEditMode  = false;
 
-// Volume / Delay text
-static const int UI_VOL_LBL_Y   = 145;
-static const int UI_DLY_LBL_Y   = 175;
-static const int UI_VOL_VAL_X   = 120;
-static const int UI_VOL_VAL_Y   = 145;
-static const int UI_VOL_RPT_X   = 220;
-static const int UI_VOL_RPT_Y   = 145;
-static const int UI_DLY_VAL_X   = 120;
-static const int UI_DLY_VAL_Y   = 175;
+const char* pageNames[PAGE_COUNT] = {
+  "REVERB",
+  "DELAY",
+  "CHORUS",
+  "SATURATION",
+  "CONFIG"
+};
 
-// Debug panel (bottom area)
-static const int UI_DBG_X       = 10;
-static const int UI_DBG_Y0      = 210;
-static const int UI_DBG_LINE_H  = 22;
+// ---------------- Config values (ESP32-side for now) ----------------
+int  cfgInputGain = 8;        // 0..15 (SGTL5000 lineInLevel)
+int  cfgOutputLvl = 72;       // 0..100 (maps to amp gain on Teensy)
+int  cfgHpfIdx    = 3;        // index into HPF list below
+bool cfgGateOn    = true;
+int  cfgBrightPct = 80;       // 0..100 (ESP32 backlight control later)
 
-// ---- "Button" area: DRY channel toggle ----
-static const int UI_BTN_X = 240;
-static const int UI_BTN_Y = 6;
-static const int UI_BTN_W = 150;
-static const int UI_BTN_H = 40;
+static const int HPF_LIST[] = { 0, 80, 100, 120, 150 }; // 0 = OFF
+static const int HPF_COUNT  = sizeof(HPF_LIST) / sizeof(HPF_LIST[0]);
 
-// ---------------- Encoder smoothing ----------------
+// ---------------- Vertical meters ----------------
+static const int METER_W   = 18;
+static const int METER_H   = 160;
+static const int IN_METER_Y  = 50;
+static const int OUT_METER_Y = 50;
+
+static const int LEFT_METER_X = 6;
+static inline int rightMeterX() { return tft.width() - METER_W - 6; }
+
+// ---------------- Content region (between meters) ----------------
+// NOTE: assumes rotation(1) = 480x320
+static const int CONTENT_X = LEFT_METER_X + METER_W + 10;
+static const int CONTENT_Y = 44;
+static const int CONTENT_W = 480 - CONTENT_X - (METER_W + 10);
+static const int CONTENT_H = 320 - CONTENT_Y - 10;
+
+// ---------------- Live DBG line ----------------
+static const int DBG_LINE_LEN = 110;
+char dbgLine[DBG_LINE_LEN] = "(waiting for DBG...)";
+bool dbgDirty = true;
+
+// ---------------- Encoder ----------------
 volatile int encDelta = 0;
 int encAccum = 0;
 
-int volume = 50;
-int teensyVolume = -1;
-
-static const int ENC_STEP = 2;
-static const int ENC_DEADBAND = 2;
-static const uint32_t VOL_TX_PERIOD_MS = 40;
-
-// Encoder button debounce
-static uint32_t lastBtnMs = 0;
+static const int ENC_DEADBAND = 1;
 static const uint32_t BTN_DEBOUNCE_MS = 220;
+static uint32_t lastBtnMs = 0;
 
 // ---------------- UART ----------------
-static char rxLine[128];
+static char   rxLine[128];
 static size_t rxLen = 0;
 uint32_t lastRxMs = 0;
 
 // ---------------- Meters ----------------
-int inSeg = 0;
-int outSeg = 0;
+int inSeg = 0, outSeg = 0;
+int lastInSeg = -1, lastOutSeg = -1;
 
-// ---------------- Delay ----------------
-int delayOn = 0;
-
-// ---------------- Dry Channel ----------------
-int dryChan = 0;        // 0 or 2 (from Teensy)
-int lastDryChanShown = -1;
-
-// ---------------- Debug telemetry ----------------
-float dbgDry = -1.0f;
-float dbgWet = -1.0f;
-int   dbgDtMs = -1;
-float dbgPki = -1.0f;
-float dbgPkd = -1.0f;
-float dbgPks = -1.0f;
-float dbgPko = -1.0f;
-bool  dbgSeen = false;
-
-// ---------------- UI state ----------------
-int lastVolShown = -999;
-int lastTeensyVolShown = -999;
-int lastInSeg = -1;
-int lastOutSeg = -1;
-int lastDelayShown = -1;
-bool lastCommsGood = false;
-
+// ---------------- UI timing ----------------
 uint32_t lastUiMs = 0;
-uint32_t lastVolTxMs = 0;
-uint32_t lastTouchMs = 0;
+
+// ============================================================
+// Minimal FT6336U I2C driver (NO external library)
+// ============================================================
+static const uint8_t FT_ADDR     = 0x38;
+static const uint8_t REG_TD_STAT = 0x02; // touch points (low nibble)
+static const uint8_t REG_P1_XH   = 0x03;
+static const uint8_t REG_P1_XL   = 0x04;
+static const uint8_t REG_P1_YH   = 0x05;
+static const uint8_t REG_P1_YL   = 0x06;
+
+static bool ftReadRegs(uint8_t startReg, uint8_t *buf, uint8_t len) {
+  Wire.beginTransmission(FT_ADDR);
+  Wire.write(startReg);
+  if (Wire.endTransmission(false) != 0) return false; // repeated-start
+  int n = Wire.requestFrom((int)FT_ADDR, (int)len);
+  if (n != len) return false;
+  for (uint8_t i = 0; i < len; i++) buf[i] = Wire.read();
+  return true;
+}
+
+// Returns true if touch detected; sx/sy are SCREEN coordinates (rotation(1) guess)
+static bool readTouch(int &sx, int &sy) {
+  uint8_t td = 0;
+  if (!ftReadRegs(REG_TD_STAT, &td, 1)) return false;
+  if ((td & 0x0F) == 0) return false;
+
+  uint8_t b[4];
+  if (!ftReadRegs(REG_P1_XH, b, 4)) return false;
+
+  uint16_t x = ((uint16_t)(b[0] & 0x0F) << 8) | b[1];
+  uint16_t y = ((uint16_t)(b[2] & 0x0F) << 8) | b[3];
+
+  // --- TEMP mapping guess ---
+  // Many panels report portrait coords (0..319, 0..479) while we use landscape 480x320.
+  // Start with a common transform for rotation(1).
+  int rawX = (int)x;
+  int rawY = (int)y;
+
+  sx = constrain(rawY, 0, 479);
+  sy = constrain(320 - rawX, 0, 319);
+  return true;
+}
+
+// ---------------- Forward declarations ----------------
+void drawConfigPage();
+void drawLogWindow();
 
 // ---------------- ISR ----------------
 IRAM_ATTR void isrEncA() {
@@ -111,67 +156,44 @@ IRAM_ATTR void isrEncA() {
 }
 
 // ---------------- UI helpers ----------------
-void drawLed(int x, int y, uint16_t color) {
-  tft.fillCircle(x, y, 6, color);
-}
+static const int ROW_H = 26;
 
-void drawValue(int x, int y, int v, uint16_t color) {
-  tft.fillRect(x, y, 80, 30, TFT_BLACK);
-  tft.setTextColor(color, TFT_BLACK);
-  tft.setCursor(x, y);
-  if (v < 0) tft.print("--");
-  else tft.print(v);
-}
-
-void drawValueFloat(int x, int y, float v, uint16_t color, int widthPx = 160) {
-  tft.fillRect(x, y, widthPx, 20, TFT_BLACK);
-  tft.setTextColor(color, TFT_BLACK);
-  tft.setCursor(x, y);
-  if (v < 0.0f) tft.print("--");
-  else tft.print(v, 2);
-}
-
-void drawTextField(int x, int y, const char* s, uint16_t color, int widthPx = 200) {
-  tft.fillRect(x, y, widthPx, 20, TFT_BLACK);
-  tft.setTextColor(color, TFT_BLACK);
-  tft.setCursor(x, y);
-  tft.print(s);
-}
-
-void drawSegmentMeter(int x, int y, int segLit) {
-  const int segW = 26, segH = 22, gap = 4;
-
-  for (int i = 1; i <= 8; i++) {
-    int sx = x + (i - 1) * (segW + gap);
-    uint16_t color =
-      (i <= 5) ? TFT_GREEN :
-      (i <= 7) ? TFT_ORANGE :
-                 TFT_RED;
-
-    bool on = (i <= segLit);
-    tft.fillRoundRect(sx, y, segW, segH, 4, on ? color : TFT_BLACK);
-    tft.drawRoundRect(sx, y, segW, segH, 4, on ? color : TFT_DARKGREY);
-  }
-}
-
-void drawDryChanButton() {
-  // Frame
-  tft.drawRoundRect(UI_BTN_X, UI_BTN_Y, UI_BTN_W, UI_BTN_H, 8, TFT_DARKGREY);
-
-  // Fill
-  uint16_t fill = (dryChan == 2) ? TFT_DARKGREY : TFT_BLACK;
-  tft.fillRoundRect(UI_BTN_X + 1, UI_BTN_Y + 1, UI_BTN_W - 2, UI_BTN_H - 2, 8, fill);
-
-  // Text
+void drawRowLabel(int x, int y, const char* label) {
   tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, fill);
-  tft.setCursor(UI_BTN_X + 10, UI_BTN_Y + 10);
-  tft.print("DRY ");
-  tft.print((dryChan == 2) ? "CH2" : "CH0");
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setCursor(x, y);
+  tft.print(label);
 }
 
-static bool pointInRect(int x, int y, int rx, int ry, int rw, int rh) {
-  return (x >= rx && x < (rx + rw) && y >= ry && y < (ry + rh));
+void drawRowValueBox(int x, int y, int w, const char* value, bool selected) {
+  uint16_t frame = selected ? TFT_YELLOW : TFT_DARKGREY;
+
+  tft.drawRoundRect(x, y - 2, w, ROW_H, 6, frame);
+  tft.fillRoundRect(x + 1, y - 1, w - 2, ROW_H - 2, 6, TFT_BLACK);
+
+  tft.setTextSize(2);
+  tft.setTextColor(selected ? TFT_YELLOW : TFT_CYAN, TFT_BLACK);
+  tft.setCursor(x + 8, y);
+  tft.print(value);
+}
+
+void drawVerticalMeter(int x, int y, int segLit) {
+  const int segCount = 8;
+  const int segGap = 3;
+  int segH = (METER_H - (segCount - 1) * segGap) / segCount;
+
+  for (int i = 0; i < segCount; i++) {
+    int sy = y + METER_H - (i + 1) * (segH + segGap) + segGap;
+
+    uint16_t color =
+      (i < 4) ? TFT_GREEN :
+      (i < 6) ? TFT_ORANGE :
+                TFT_RED;
+
+    bool on = (i < segLit);
+    tft.fillRect(x, sy, METER_W, segH, on ? color : TFT_BLACK);
+    tft.drawRect(x, sy, METER_W, segH, TFT_DARKGREY);
+  }
 }
 
 void drawStaticUI() {
@@ -179,148 +201,144 @@ void drawStaticUI() {
   tft.setRotation(1);
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawFastHLine(0, 34, tft.width(), TFT_DARKGREY);
 
-  // Labels
-  tft.setCursor(UI_LABEL_X, UI_INPUT_LBL_Y);  tft.print("INPUT");
-  tft.setCursor(UI_LABEL_X, UI_OUT_LBL_Y);    tft.print("OUTPUT");
+  drawVerticalMeter(LEFT_METER_X, IN_METER_Y, 0);
+  drawVerticalMeter(rightMeterX(), OUT_METER_Y, 0);
+}
 
-  tft.setCursor(UI_LABEL_X, UI_VOL_LBL_Y);    tft.print("Volume:");
-  tft.setCursor(UI_LABEL_X, UI_DLY_LBL_Y);    tft.print("Delay :");
+void drawPageHeader() {
+  tft.fillRect(0, 0, tft.width(), 34, TFT_BLACK);
 
-  // Meter frames
-  tft.drawRoundRect(UI_METER_X - 3, UI_IN_METER_Y - 2, 8 * 26 + 7 * 4 + 6, 22 + 4, 6, TFT_DARKGREY);
-  tft.drawRoundRect(UI_METER_X - 3, UI_OUT_METER_Y - 2, 8 * 26 + 7 * 4 + 6, 22 + 4, 6, TFT_DARKGREY);
-
-  // Legend
-  tft.setCursor(30, 8);  tft.print("COMMS");
-  tft.setCursor(30, 28); tft.print("DELAY");
-
-  // Dry button
-  drawDryChanButton();
-
-  // Debug header + labels
-  tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.setCursor(UI_DBG_X, UI_DBG_Y0);
-  tft.print("DBG:");
-
+  tft.setTextSize(2);
+  tft.setCursor(10, 8);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.print(pageNames[currentPage]);
 
-  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 1);
-  tft.print("DRYCH:");
-  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 1);
-  tft.print("DT(ms):");
-
-  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 2);
-  tft.print("DRY:");
-  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 2);
-  tft.print("WET:");
-
-  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 3);
-  tft.print("PKI:");
-  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 3);
-  tft.print("PKD:");
-
-  tft.setCursor(UI_DBG_X, UI_DBG_Y0 + UI_DBG_LINE_H * 4);
-  tft.print("PKS:");
-  tft.setCursor(UI_DBG_X + 160, UI_DBG_Y0 + UI_DBG_LINE_H * 4);
-  tft.print("PKO:");
+  if (editMode) {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setCursor(180, 8);
+    tft.print("EDIT");
+  }
 }
 
-// ---------------- UART helpers ----------------
-void sendVolume() {
-  uint32_t now = millis();
-  if (now - lastVolTxMs < VOL_TX_PERIOD_MS) return;
-  lastVolTxMs = now;
-
-  Serial.print("VOL,");
-  Serial.print(volume);
-  Serial.print("\n");
+void drawClippedText(int x, int y, int w, const char* s) {
+  tft.setCursor(x, y);
+  int maxChars = w / 6; // approx for textSize(1)
+  for (int i = 0; i < maxChars && s[i]; i++) tft.print(s[i]);
 }
 
-void requestDryChan(int target) {
-  target = (target == 2) ? 2 : 0;
-  Serial.print("CH,");
-  Serial.print(target);
-  Serial.print("\n");
+// ---------------- CONFIG log window geometry ----------------
+static inline void configLogRect(int &x, int &y, int &w, int &h) {
+  const int padY = 6;
+  const int textH = 10;        // textSize(1) one line
+  const int boxH = textH + padY * 2;
+
+  x = CONTENT_X;
+  w = CONTENT_W;
+  h = boxH;
+
+  const int bottomMargin = 8;
+  y = tft.height() - bottomMargin - h;
 }
 
-void toggleDryChanRequest() {
-  int target = (dryChan == 2) ? 0 : 2;
-  requestDryChan(target);
+// ---------------- CONFIG page ----------------
+void drawConfigPage() {
+  tft.fillRect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H, TFT_BLACK);
 
-  // optimistic UI update; Teensy will confirm via CH/DBG
-  dryChan = target;
-  drawDryChanButton();
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setCursor(CONTENT_X, CONTENT_Y);
+  tft.print("GLOBAL SETTINGS");
+
+  const int labelX = CONTENT_X;
+  const int valueW = 120;
+  const int valueX = CONTENT_X + CONTENT_W - valueW;
+  int y = CONTENT_Y + 30;
+
+  char buf[32];
+
+  drawRowLabel(labelX, y, "Input Gain");
+  snprintf(buf, sizeof(buf), "%d", cfgInputGain);
+  drawRowValueBox(valueX, y, valueW, buf, false);
+
+  y += ROW_H + 6;
+  drawRowLabel(labelX, y, "Output Level");
+  snprintf(buf, sizeof(buf), "%d", cfgOutputLvl);
+  drawRowValueBox(valueX, y, valueW, buf, false);
+
+  y += ROW_H + 6;
+  drawRowLabel(labelX, y, "HPF Cutoff");
+  if (HPF_LIST[cfgHpfIdx] == 0) snprintf(buf, sizeof(buf), "OFF");
+  else snprintf(buf, sizeof(buf), "%dHz", HPF_LIST[cfgHpfIdx]);
+  drawRowValueBox(valueX, y, valueW, buf, false);
+
+  y += ROW_H + 6;
+  drawRowLabel(labelX, y, "Noise Gate");
+  snprintf(buf, sizeof(buf), "%s", cfgGateOn ? "ON" : "OFF");
+  drawRowValueBox(valueX, y, valueW, buf, false);
+
+  y += ROW_H + 6;
+  drawRowLabel(labelX, y, "Brightness");
+  snprintf(buf, sizeof(buf), "%d%%", cfgBrightPct);
+  drawRowValueBox(valueX, y, valueW, buf, false);
+
+  int logX, logY, logW, logH;
+  configLogRect(logX, logY, logW, logH);
+
+  tft.drawFastHLine(CONTENT_X, logY - 8, CONTENT_W, TFT_DARKGREY);
+
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(logX, logY - 24);
+  tft.print("LIVE DEBUG");
+
+  tft.drawRect(logX, logY, logW, logH, TFT_DARKGREY);
+
+  dbgDirty = true;
 }
 
-static bool parseKeyFloat(const char* line, const char* key, float &outVal) {
-  const char* p = strstr(line, key);
-  if (!p) return false;
-  p += strlen(key);
-  if (*p != '=') return false;
-  p++;
-  outVal = (float)atof(p);
-  return true;
+void drawLogWindow() {
+  if (currentPage != PAGE_CONFIG) return;
+  if (!dbgDirty) return;
+  dbgDirty = false;
+
+  int logX, logY, logW, logH;
+  configLogRect(logX, logY, logW, logH);
+
+  tft.fillRect(logX + 2, logY + 2, logW - 4, logH - 4, TFT_BLACK);
+
+  tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+  tft.setTextSize(1);
+
+  drawClippedText(logX + 6, logY + 6, logW - 12, dbgLine);
+
+  tft.setTextSize(2);
 }
 
-static bool parseKeyInt(const char* line, const char* key, int &outVal) {
-  const char* p = strstr(line, key);
-  if (!p) return false;
-  p += strlen(key);
-  if (*p != '=') return false;
-  p++;
-  outVal = atoi(p);
-  return true;
-}
-
+// ---------------- UART parsing ----------------
 void processLine(const char* line) {
   lastRxMs = millis();
 
-  if (!strncmp(line, "LVL", 3)) {
-    teensyVolume = atoi(line + 4);
-    return;
+  // DBG filtering (only capture DBG lines; strip "DBG,")
+  if (!strncmp(line, "DBG,", 4)) {
+    const char* p = line + 4;
+    strncpy(dbgLine, p, DBG_LINE_LEN - 1);
+    dbgLine[DBG_LINE_LEN - 1] = '\0';
+    dbgDirty = true;
   }
 
+  // Meters
   if (!strncmp(line, "MTR", 3)) {
-    inSeg  = atoi(line + 4);
+    inSeg = atoi(line + 4);
     const char* c = strchr(line + 4, ',');
     if (c) outSeg = atoi(c + 1);
-    return;
-  }
-
-  if (!strncmp(line, "DLY", 3)) {
-    delayOn = atoi(line + 4);
-    return;
-  }
-
-  // CH,<0|2>
-  if (!strncmp(line, "CH", 2)) {
-    dryChan = atoi(line + 3);
-    if (dryChan != 2) dryChan = 0;
-    return;
-  }
-
-  // DBG,DRYCH=0,DRY=1.00,WET=0.00,DT=180,PKI=0.12,PKD=0.05,PKS=0.10,PKO=0.09
-  if (!strncmp(line, "DBG", 3)) {
-    parseKeyInt(line, "DRYCH", dryChan);
-    if (dryChan != 2) dryChan = 0;
-
-    parseKeyFloat(line, "DRY",  dbgDry);
-    parseKeyFloat(line, "WET",  dbgWet);
-    parseKeyInt  (line, "DT",   dbgDtMs);
-    parseKeyFloat(line, "PKI",  dbgPki);
-    parseKeyFloat(line, "PKD",  dbgPkd);
-    parseKeyFloat(line, "PKS",  dbgPks);
-    parseKeyFloat(line, "PKO",  dbgPko);
-
-    dbgSeen = true;
-    return;
   }
 }
 
 void pollUart() {
   while (Serial.available()) {
-    char c = Serial.read();
+    char c = (char)Serial.read();
     if (c == '\r') continue;
 
     if (c == '\n') {
@@ -329,37 +347,18 @@ void pollUart() {
       rxLen = 0;
     } else if (rxLen < sizeof(rxLine) - 1) {
       rxLine[rxLen++] = c;
+    } else {
+      rxLen = 0;
     }
   }
 }
 
-// ---------------- Optional Touch (compile-safe) ----------------
-// TFT_eSPI only provides getTouch() if touch is enabled in User_Setup.h.
-// We'll compile touch code ONLY when TOUCH_CS is defined.
-void pollTouch() {
-#if defined(TOUCH_CS)
-  uint16_t tx, ty;
-  if (!tft.getTouch(&tx, &ty)) return;
-
-  uint32_t now = millis();
-  if (now - lastTouchMs < 250) return;
-  lastTouchMs = now;
-
-  if (pointInRect((int)tx, (int)ty, UI_BTN_X, UI_BTN_Y, UI_BTN_W, UI_BTN_H)) {
-    toggleDryChanRequest();
-  }
-#else
-  // No touch compiled in. Use encoder press fallback.
-  (void)lastTouchMs;
-#endif
-}
-
-// ---------------- Encoder button fallback ----------------
+// ---------------- Encoder button ----------------
 void pollEncButton() {
   uint32_t now = millis();
   if (digitalRead(PIN_ENC_SW) == LOW && (now - lastBtnMs) > BTN_DEBOUNCE_MS) {
     lastBtnMs = now;
-    toggleDryChanRequest();
+    editMode = !editMode;
   }
 }
 
@@ -373,12 +372,22 @@ void setup() {
 
   tft.init();
   drawStaticUI();
+  drawPageHeader();
 
-  drawLed(UI_LED_COMMS_X, UI_LED_COMMS_Y, TFT_DARKGREY);
-  drawLed(UI_LED_DLY_X, UI_LED_DLY_Y, TFT_DARKGREY);
+  // I2C for touch
+  Wire.begin(); // if needed: Wire.begin(21, 22);
 
-  drawSegmentMeter(UI_METER_X, UI_IN_METER_Y, 0);
-  drawSegmentMeter(UI_METER_X, UI_OUT_METER_Y, 0);
+  // Touch presence check
+  uint8_t td = 0;
+  bool ok = ftReadRegs(REG_TD_STAT, &td, 1);
+  strncpy(dbgLine, ok ? "TOUCH OK (FT6336U @0x38)" : "TOUCH FAIL (FT6336U @0x38)", DBG_LINE_LEN - 1);
+  dbgLine[DBG_LINE_LEN - 1] = '\0';
+  dbgDirty = true;
+
+  if (currentPage == PAGE_CONFIG) drawConfigPage();
+
+  lastPage = currentPage;
+  lastEditMode = editMode;
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENC_A), isrEncA, CHANGE);
 }
@@ -386,12 +395,9 @@ void setup() {
 // ---------------- Loop ----------------
 void loop() {
   pollUart();
-  pollTouch();
   pollEncButton();
 
-  uint32_t now = millis();
-
-  // -------- Encoder smoothing --------
+  // Encoder navigation
   int d;
   noInterrupts();
   d = encDelta;
@@ -403,86 +409,56 @@ void loop() {
     int steps = encAccum / ENC_DEADBAND;
     encAccum -= steps * ENC_DEADBAND;
 
-    volume = constrain(volume + steps * ENC_STEP, 0, 100);
-    sendVolume();
+    if (!editMode) {
+      int p = (int)currentPage + steps;
+      if (p < 0) p = 0;
+      if (p >= PAGE_COUNT) p = PAGE_COUNT - 1;
+      currentPage = (UiPage)p;
+    }
   }
 
-  // -------- UI refresh --------
+  // >>> TEMP TOUCH TEST START
+  // Show a dot at the touch point and overwrite dbgLine with coordinates.
+  // REMOVE this block once mapping is verified.
+  int tx, ty;
+  if (readTouch(tx, ty)) {
+    tft.fillCircle(tx, ty, 3, TFT_YELLOW);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "TOUCH x=%d y=%d", tx, ty);
+    strncpy(dbgLine, buf, DBG_LINE_LEN - 1);
+    dbgLine[DBG_LINE_LEN - 1] = '\0';
+    dbgDirty = true;
+    delay(60); // temp debounce
+  }
+  // >>> TEMP TOUCH TEST END
+
+  // UI refresh
+  uint32_t now = millis();
   if (now - lastUiMs > 50) {
     lastUiMs = now;
 
-    // Comms LED
-    bool commsGood = (now - lastRxMs) < 300;
-    if (commsGood != lastCommsGood) {
-      lastCommsGood = commsGood;
-      drawLed(UI_LED_COMMS_X, UI_LED_COMMS_Y, commsGood ? TFT_GREEN : TFT_DARKGREY);
+    if (currentPage != lastPage || editMode != lastEditMode) {
+      tft.fillRect(CONTENT_X, CONTENT_Y, CONTENT_W, CONTENT_H, TFT_BLACK);
+      drawPageHeader();
+
+      if (currentPage == PAGE_CONFIG) {
+        drawConfigPage();
+      }
+
+      lastPage = currentPage;
+      lastEditMode = editMode;
     }
 
-    // Delay LED + value
-    if (delayOn != lastDelayShown) {
-      lastDelayShown = delayOn;
-      drawLed(UI_LED_DLY_X, UI_LED_DLY_Y, delayOn ? TFT_GREEN : TFT_DARKGREY);
-      drawValue(UI_DLY_VAL_X, UI_DLY_VAL_Y, delayOn ? 1 : 0, delayOn ? TFT_GREEN : TFT_LIGHTGREY);
-    }
+    drawLogWindow();
 
-    // Volume displays
-    if (volume != lastVolShown) {
-      lastVolShown = volume;
-      drawValue(UI_VOL_VAL_X, UI_VOL_VAL_Y, volume, TFT_YELLOW);
-    }
-    if (teensyVolume != lastTeensyVolShown) {
-      lastTeensyVolShown = teensyVolume;
-      drawValue(UI_VOL_RPT_X, UI_VOL_RPT_Y, teensyVolume, TFT_CYAN);
-    }
-
-    // Meters
+    // meters
     if (inSeg != lastInSeg) {
       lastInSeg = inSeg;
-      drawSegmentMeter(UI_METER_X, UI_IN_METER_Y, inSeg);
+      drawVerticalMeter(LEFT_METER_X, IN_METER_Y, inSeg);
     }
     if (outSeg != lastOutSeg) {
       lastOutSeg = outSeg;
-      drawSegmentMeter(UI_METER_X, UI_OUT_METER_Y, outSeg);
-    }
-
-    // Dry button state refresh (if Teensy changed it)
-    if (dryChan != lastDryChanShown) {
-      lastDryChanShown = dryChan;
-      drawDryChanButton();
-    }
-
-    // ---- DEBUG PANEL ----
-    if (!dbgSeen) {
-      drawTextField(UI_DBG_X + 70,  UI_DBG_Y0 + UI_DBG_LINE_H * 1, "--", TFT_WHITE, 70);
-      drawTextField(UI_DBG_X + 240, UI_DBG_Y0 + UI_DBG_LINE_H * 1, "--", TFT_WHITE, 80);
-
-      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 2, "--", TFT_WHITE, 90);
-      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 2, "--", TFT_WHITE, 90);
-
-      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 3, "--", TFT_WHITE, 90);
-      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 3, "--", TFT_WHITE, 90);
-
-      drawTextField(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 4, "--", TFT_WHITE, 120);
-      drawTextField(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 4, "--", TFT_WHITE, 120);
-    } else {
-      // DRYCH + DT
-      char chBuf[8]; snprintf(chBuf, sizeof(chBuf), "%d", dryChan);
-      drawTextField(UI_DBG_X + 70,  UI_DBG_Y0 + UI_DBG_LINE_H * 1, chBuf, TFT_YELLOW, 70);
-
-      char dtBuf[16]; snprintf(dtBuf, sizeof(dtBuf), "%d", dbgDtMs);
-      drawTextField(UI_DBG_X + 240, UI_DBG_Y0 + UI_DBG_LINE_H * 1, dtBuf, TFT_YELLOW, 80);
-
-      // DRY / WET
-      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 2, dbgDry, TFT_CYAN, 90);
-      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 2, dbgWet, TFT_CYAN, 90);
-
-      // PKI / PKD
-      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 3, dbgPki, TFT_GREEN, 90);
-      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 3, dbgPkd, TFT_GREEN, 90);
-
-      // PKS / PKO
-      drawValueFloat(UI_DBG_X + 60,  UI_DBG_Y0 + UI_DBG_LINE_H * 4, dbgPks, TFT_ORANGE, 120);
-      drawValueFloat(UI_DBG_X + 220, UI_DBG_Y0 + UI_DBG_LINE_H * 4, dbgPko, TFT_ORANGE, 120);
+      drawVerticalMeter(rightMeterX(), OUT_METER_Y, outSeg);
     }
   }
 
