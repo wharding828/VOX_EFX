@@ -1,7 +1,18 @@
-SET(SOURCES screens/ui_Main.c
+SET(SOURCES components/ui_comp_indicatorright.c
+    components/ui_comp_slider3.c
+    components/ui_comp_x32meter.c
+    components/ui_comp.c
+    screens/ui_Main.c
     ui.c
     components/ui_comp_hook.c
     ui_helpers.c
-    ui_events.c)
+    ui_events.c
+    images/ui_img_382037981.c
+    images/ui_img_1980880135.c
+    images/ui_img_1926139265.c
+    images/ui_img_2009663892.c
+    fonts/ui_font_14_bold.c
+    fonts/ui_font_mos_semibold_16.c
+    fonts/ui_font_number.c)
 
 add_library(ui ${SOURCES})

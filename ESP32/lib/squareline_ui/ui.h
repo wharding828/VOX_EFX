@@ -10,9 +10,13 @@
 extern "C" {
 #endif
 
-#include <lvgl.h>
+//#include "lvgl/lvgl.h"
+#include "lvgl.h"
+
 
 #include "ui_helpers.h"
+#include "components/ui_comp.h"
+#include "components/ui_comp_hook.h"
 #include "ui_events.h"
 
 ///////////////////// SCREENS ////////////////////
@@ -22,6 +26,17 @@ extern "C" {
 
 // EVENTS
 extern lv_obj_t * ui____initial_actions0;
+
+// IMAGES AND IMAGE SETS
+LV_IMG_DECLARE(ui_img_382037981);    // assets/ChatGPT Image Feb 7, 2026, 07_45_50 PM.png
+LV_IMG_DECLARE(ui_img_1980880135);    // assets/ChatGPT Image Feb 7, 2026, 07_54_16 PM.png
+LV_IMG_DECLARE(ui_img_1926139265);    // assets/ChatGPT Image Feb 7, 2026, 07_33_48 PM.png
+LV_IMG_DECLARE(ui_img_2009663892);    // assets/ChatGPT Image Feb 7, 2026, 07_52_39 PM.png
+
+// FONTS
+LV_FONT_DECLARE(ui_font_14_bold);
+LV_FONT_DECLARE(ui_font_mos_semibold_16);
+LV_FONT_DECLARE(ui_font_number);
 
 // UI INIT
 void ui_init(void);

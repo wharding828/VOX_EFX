@@ -3,3 +3,16 @@
 // LVGL version: 9.1.0
 // Project name: VOX_EFX
 
+#include "../ui.h"
+
+void ui_comp_IndicatorRight_create_hook(lv_obj_t * comp)
+{
+}
+
+void ui_comp_Slider3_create_hook(lv_obj_t * comp)
+{
+}
+
+void ui_comp_X32Meter_create_hook(lv_obj_t * comp)
+{
+}
