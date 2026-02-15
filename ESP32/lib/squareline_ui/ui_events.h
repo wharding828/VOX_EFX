@@ -10,12 +10,6 @@
 extern "C" {
 #endif
 
-void on_nav_reverb(lv_event_t * e);
-void on_nav_delay(lv_event_t * e);
-void on_nav_dynamics(lv_event_t * e);
-void on_nav_eq(lv_event_t * e);
-void on_nav_setup(lv_event_t * e);
-
 #ifdef __cplusplus
 } /*extern "C"*/
 #endif

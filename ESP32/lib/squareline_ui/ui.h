@@ -10,14 +10,14 @@
 extern "C" {
 #endif
 
-//#include "lvgl/lvgl.h"
-#include "lvgl.h"
-
+#include "lvgl/lvgl.h"
 
 #include "ui_helpers.h"
 #include "components/ui_comp.h"
 #include "components/ui_comp_hook.h"
 #include "ui_events.h"
+#include "ui_theme_manager.h"
+#include "ui_themes.h"
 
 ///////////////////// SCREENS ////////////////////
 #include "screens/ui_Main.h"
@@ -28,10 +28,14 @@ extern "C" {
 extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_382037981);    // assets/ChatGPT Image Feb 7, 2026, 07_45_50 PM.png
-LV_IMG_DECLARE(ui_img_1980880135);    // assets/ChatGPT Image Feb 7, 2026, 07_54_16 PM.png
-LV_IMG_DECLARE(ui_img_1926139265);    // assets/ChatGPT Image Feb 7, 2026, 07_33_48 PM.png
-LV_IMG_DECLARE(ui_img_2009663892);    // assets/ChatGPT Image Feb 7, 2026, 07_52_39 PM.png
+LV_IMG_DECLARE(ui_img_arrow_left_24_png);    // assets/arrow_left_24.png
+LV_IMG_DECLARE(ui_img_icn_wifi_png);    // assets/icn_wifi.png
+LV_IMG_DECLARE(ui_img_bgpanel_home_png);    // assets/BGPanel_Home.png
+LV_IMG_DECLARE(ui_img_reverbpedal_png);    // assets/ReverbPedal.png
+LV_IMG_DECLARE(ui_img_delaypedal_png);    // assets/DelayPedal.png
+LV_IMG_DECLARE(ui_img_comppedal_png);    // assets/CompPedal.png
+LV_IMG_DECLARE(ui_img_eqpedal_png);    // assets/EQPedal.png
+LV_IMG_DECLARE(ui_img_icn_settings_png);    // assets/icn_settings.png
 
 // FONTS
 LV_FONT_DECLARE(ui_font_14_bold);
