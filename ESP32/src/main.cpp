@@ -143,11 +143,11 @@ static void hideAllPages()
 {
   // All of these exist per your ui_Main.h
   if (ui_contHome)     lv_obj_add_flag(ui_contHome, LV_OBJ_FLAG_HIDDEN);
-  if (ui_contDelay)    lv_obj_add_flag(ui_contDelay, LV_OBJ_FLAG_HIDDEN);
+  //if (ui_contDelay)    lv_obj_add_flag(ui_contDelay, LV_OBJ_FLAG_HIDDEN);
   if (ui_contReverb)   lv_obj_add_flag(ui_contReverb, LV_OBJ_FLAG_HIDDEN);
-  if (ui_contComp)     lv_obj_add_flag(ui_contComp, LV_OBJ_FLAG_HIDDEN);
-  if (ui_contEQ)       lv_obj_add_flag(ui_contEQ, LV_OBJ_FLAG_HIDDEN);
-  if (ui_contSettings) lv_obj_add_flag(ui_contSettings, LV_OBJ_FLAG_HIDDEN);
+  //if (ui_contComp)     lv_obj_add_flag(ui_contComp, LV_OBJ_FLAG_HIDDEN);
+  //if (ui_contEQ)       lv_obj_add_flag(ui_contEQ, LV_OBJ_FLAG_HIDDEN);
+  //if (ui_contSettings) lv_obj_add_flag(ui_contSettings, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void updateBackVisibility()
@@ -168,11 +168,11 @@ static void showPage(Page p)
 
   switch (p) {
     case Page::Home:     if (ui_contHome)     lv_obj_remove_flag(ui_contHome, LV_OBJ_FLAG_HIDDEN); break;
-    case Page::Delay:    if (ui_contDelay)    lv_obj_remove_flag(ui_contDelay, LV_OBJ_FLAG_HIDDEN); break;
+    //case Page::Delay:    if (ui_contDelay)    lv_obj_remove_flag(ui_contDelay, LV_OBJ_FLAG_HIDDEN); break;
     case Page::Reverb:   if (ui_contReverb)   lv_obj_remove_flag(ui_contReverb, LV_OBJ_FLAG_HIDDEN); break;
-    case Page::Comp:     if (ui_contComp)     lv_obj_remove_flag(ui_contComp, LV_OBJ_FLAG_HIDDEN); break;
-    case Page::EQ:       if (ui_contEQ)       lv_obj_remove_flag(ui_contEQ, LV_OBJ_FLAG_HIDDEN); break;
-    case Page::Settings: if (ui_contSettings) lv_obj_remove_flag(ui_contSettings, LV_OBJ_FLAG_HIDDEN); break;
+    //case Page::Comp:     if (ui_contComp)     lv_obj_remove_flag(ui_contComp, LV_OBJ_FLAG_HIDDEN); break;
+    //case Page::EQ:       if (ui_contEQ)       lv_obj_remove_flag(ui_contEQ, LV_OBJ_FLAG_HIDDEN); break;
+    //case Page::Settings: if (ui_contSettings) lv_obj_remove_flag(ui_contSettings, LV_OBJ_FLAG_HIDDEN); break;
   }
 
   updateBackVisibility();
@@ -193,11 +193,11 @@ static void navTileEventCb(lv_event_t* e)
   lv_obj_t* obj = (lv_obj_t*)lv_event_get_target(e);
   if (!obj) return;
 
-  if      (obj == ui_contTileDelay)    showPage(Page::Delay);
-  else if (obj == ui_contTileReverb)   showPage(Page::Reverb);
-  else if (obj == ui_contTileComp)     showPage(Page::Comp);
-  else if (obj == ui_contTileEQ)       showPage(Page::EQ);
-  else if (obj == ui_contTileSettings) showPage(Page::Settings);
+  //if      (obj == ui_contTileDelay)    showPage(Page::Delay);
+  if (obj == ui_contTileReverb)   showPage(Page::Reverb);
+  //else if (obj == ui_contTileComp)     showPage(Page::Comp);
+  //else if (obj == ui_contTileEQ)       showPage(Page::EQ);
+  //else if (obj == ui_contTileSettings) showPage(Page::Settings);
 }
 
 static void backBtnEventCb(lv_event_t* e)
@@ -386,7 +386,14 @@ void setup()
   lv_indev_set_read_cb(indev, my_touch_read_cb);
 #endif
 
-  // --- SquareLine UI ---
+  // --- UI cOLOR test
+ tft.begin();
+ tft.fillScreen(TFT_RED);   delay(300);
+ tft.fillScreen(TFT_GREEN); delay(300);
+ tft.fillScreen(TFT_BLUE);  delay(300);
+
+ 
+// --- SquareLine UI ---
   ui_init();
 
   // WiFi glow style and initial state
@@ -395,10 +402,10 @@ void setup()
 
   // Make tiles clickable and attach events
   makeClickable(ui_contTileReverb,   navTileEventCb);
-  makeClickable(ui_contTileDelay,    navTileEventCb);
-  makeClickable(ui_contTileComp,     navTileEventCb);
-  makeClickable(ui_contTileEQ,       navTileEventCb);
-  makeClickable(ui_contTileSettings, navTileEventCb);
+  //makeClickable(ui_contTileDelay,    navTileEventCb);
+  //makeClickable(ui_contTileComp,     navTileEventCb);
+  //makeClickable(ui_contTileEQ,       navTileEventCb);
+  //makeClickable(ui_contTileSettings, navTileEventCb);
 
   // Back button
   makeClickable(ui_uibtnBack, backBtnEventCb);
