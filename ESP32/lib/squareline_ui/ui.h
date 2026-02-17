@@ -10,8 +10,7 @@
 extern "C" {
 #endif
 
-#include <lvgl.h>
-
+#include "lvgl.h"
 
 #include "ui_helpers.h"
 #include "components/ui_comp.h"
@@ -29,14 +28,15 @@ extern "C" {
 extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_arrow_left_24_png);    // assets/arrow_left_24.png
 LV_IMG_DECLARE(ui_img_icn_wifi_png);    // assets/icn_wifi.png
-LV_IMG_DECLARE(ui_img_bgpanel_home_png);    // assets/BGPanel_Home.png
-LV_IMG_DECLARE(ui_img_reverbpedal_png);    // assets/ReverbPedal.png
-LV_IMG_DECLARE(ui_img_delaypedal_png);    // assets/DelayPedal.png
+LV_IMG_DECLARE(ui_img_backgnd_png);    // assets/BackGnd.png
 LV_IMG_DECLARE(ui_img_comppedal_png);    // assets/CompPedal.png
 LV_IMG_DECLARE(ui_img_eqpedal_png);    // assets/EQPedal.png
-LV_IMG_DECLARE(ui_img_icn_settings_png);    // assets/icn_settings.png
+LV_IMG_DECLARE(ui_img_reverbpedal_png);    // assets/ReverbPedal.png
+LV_IMG_DECLARE(ui_img_delaypedal_png);    // assets/DelayPedal.png
+LV_IMG_DECLARE(ui_img_indicator_ver_png);    // assets/indicator_ver.png
+LV_IMG_DECLARE(ui_img_arrow_left_24_png);    // assets/arrow_left_24.png
+LV_IMG_DECLARE(ui_img_pot_ver_knob_small_png);    // assets/pot_ver_knob_small.png
 
 // FONTS
 LV_FONT_DECLARE(ui_font_14_bold);
