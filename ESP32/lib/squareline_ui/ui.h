@@ -28,15 +28,16 @@ extern "C" {
 extern lv_obj_t * ui____initial_actions0;
 
 // IMAGES AND IMAGE SETS
-LV_IMG_DECLARE(ui_img_icn_wifi_png);    // assets/icn_wifi.png
-LV_IMG_DECLARE(ui_img_backgnd_png);    // assets/BackGnd.png
+LV_IMG_DECLARE(ui_img_wifi_disconnected_png);    // assets/wifi_disconnected.png
+LV_IMG_DECLARE(ui_img_wifi_connecting_png);    // assets/wifi_connecting.png
+LV_IMG_DECLARE(ui_img_wifi_connected_png);    // assets/wifi_connected.png
 LV_IMG_DECLARE(ui_img_comppedal_png);    // assets/CompPedal.png
-LV_IMG_DECLARE(ui_img_eqpedal_png);    // assets/EQPedal.png
-LV_IMG_DECLARE(ui_img_reverbpedal_png);    // assets/ReverbPedal.png
 LV_IMG_DECLARE(ui_img_delaypedal_png);    // assets/DelayPedal.png
-LV_IMG_DECLARE(ui_img_indicator_ver_png);    // assets/indicator_ver.png
+LV_IMG_DECLARE(ui_img_reverbpedal_png);    // assets/ReverbPedal.png
+LV_IMG_DECLARE(ui_img_eqpedal_png);    // assets/EQPedal.png
+LV_IMG_DECLARE(ui_img_button_250_50_png);    // assets/Button_250_50.png
+LV_IMG_DECLARE(ui_img_icn_settings_png);    // assets/icn_settings.png
 LV_IMG_DECLARE(ui_img_arrow_left_24_png);    // assets/arrow_left_24.png
-LV_IMG_DECLARE(ui_img_pot_ver_knob_small_png);    // assets/pot_ver_knob_small.png
 
 // FONTS
 LV_FONT_DECLARE(ui_font_14_bold);
