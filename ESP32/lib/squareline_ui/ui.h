@@ -38,6 +38,10 @@ LV_IMG_DECLARE(ui_img_eqpedal_png);    // assets/EQPedal.png
 LV_IMG_DECLARE(ui_img_button_250_50_png);    // assets/Button_250_50.png
 LV_IMG_DECLARE(ui_img_icn_settings_png);    // assets/icn_settings.png
 LV_IMG_DECLARE(ui_img_arrow_left_24_png);    // assets/arrow_left_24.png
+LV_IMG_DECLARE(ui_img_toggle_sw_off_png);    // assets/Toggle_SW_Off.png
+LV_IMG_DECLARE(ui_img_toggle_sw_on_png);    // assets/Toggle_SW_On.png
+LV_IMG_DECLARE(ui_img_pot_ver_knob_small_png);    // assets/pot_ver_knob_small.png
+LV_IMG_DECLARE(ui_img_indicator_ver_16_png);    // assets/indicator_ver_16.png
 
 // FONTS
 LV_FONT_DECLARE(ui_font_14_bold);

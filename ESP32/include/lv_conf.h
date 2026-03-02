@@ -1,3 +1,4 @@
+
 #ifndef LV_CONF_H
 #define LV_CONF_H
 
@@ -13,10 +14,10 @@
  *====================*/
 
 /* Use internal allocator */
-#define LV_MEM_CUSTOM 0
-
-/* Memory size (only used if LV_MEM_CUSTOM == 0) */
-#define LV_MEM_SIZE (48U * 1024U)   /* 48 KB is safe for ESP32 partial buffer */
+#define LV_MEM_CUSTOM 1
+#define LV_MEM_CUSTOM_ALLOC   malloc
+#define LV_MEM_CUSTOM_FREE    free
+#define LV_MEM_CUSTOM_REALLOC realloc
 
 /*====================
    HAL SETTINGS

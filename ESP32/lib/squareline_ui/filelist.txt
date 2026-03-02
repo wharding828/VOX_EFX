@@ -18,6 +18,10 @@ images/ui_img_eqpedal_png.c
 images/ui_img_button_250_50_png.c
 images/ui_img_icn_settings_png.c
 images/ui_img_arrow_left_24_png.c
+images/ui_img_toggle_sw_off_png.c
+images/ui_img_toggle_sw_on_png.c
+images/ui_img_pot_ver_knob_small_png.c
+images/ui_img_indicator_ver_16_png.c
 fonts/ui_font_14_bold.c
 fonts/ui_font_mos_semibold_16.c
 fonts/ui_font_number.c
