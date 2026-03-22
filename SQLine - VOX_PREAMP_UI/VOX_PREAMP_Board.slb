@@ -1,0 +1,38 @@
+{
+    "version": "v1.0.0",
+    "group": "VOX",
+    "title": "William Douglas Music VOX Preamp",
+
+    "width": 480,
+    "height": 320,
+    "width_min": 64,
+    "height_min": 64,
+    "width_max": 4096,
+    "height_max": 4096,
+
+    "offset_x": 0,
+    "offset_y": 0,
+    "rotation": 0,
+    "shape": "",
+
+    "color_depth": "16",
+
+    "lvgl_export_path": "./",
+    "lvgl_include_path": "lvgl.h",
+
+    "language": "C",
+
+    "supported_lvgl_version": "9.*",
+
+    "pattern_match_files": "platformio.ini, lv_conf.h",
+
+    "ui_export_path": "./lib/squareline_ui",
+    "flat_export": false,
+
+    "url": "",
+    "short_description": "ESP32 + TFT_eSPI + LVGL 9 (VOX_EFX)",
+    "long_description": "Custom board for ESP32 DevKit V1 with ST7796 display using TFT_eSPI and LVGL 9. Designed for VOX_EFX project with PlatformIO.",
+
+    "repository": "",
+    "custom_params": []
+}
