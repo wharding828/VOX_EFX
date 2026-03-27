@@ -33,7 +33,8 @@ LV_IMG_DECLARE(ui_img_bluetooth_ico_png);    // assets/BlueTooth_ico.png
 LV_IMG_DECLARE(ui_img_mqtt_svrstack_png);    // assets/MQTT_SvrStack.png
 LV_IMG_DECLARE(ui_img_icn_wifi_png);    // assets/icn_wifi.png
 LV_IMG_DECLARE(ui_img_mic_ico_png);    // assets/Mic_ico.png
-LV_IMG_DECLARE(ui_img_indicator_ver_25seg_png);    // assets/indicator_ver_25seg.png
+LV_IMG_DECLARE(ui_img_indicator_ver_25seg_png);   // assets/indicator_ver_25seg.png
+LV_IMG_DECLARE(ui_img_indicator_ver_25seg_wide_png);    // assets/indicator_ver_25seg_wide.png
 LV_IMG_DECLARE(ui_img_icn_back_png);    // assets/icn_back.png
 LV_IMG_DECLARE(ui_img_icn_forward_png);    // assets/icn_Forward.png
 

@@ -11,7 +11,7 @@ SET(SOURCES screens/ui_ScreenMain.c
     images/ui_img_mqtt_svrstack_png.c
     images/ui_img_icn_wifi_png.c
     images/ui_img_mic_ico_png.c
-    images/ui_img_indicator_ver_25seg_png.c
+    images/ui_img_indicator_ver_25seg_wide_png.c
     images/ui_img_icn_back_png.c
     images/ui_img_icn_forward_png.c)
 

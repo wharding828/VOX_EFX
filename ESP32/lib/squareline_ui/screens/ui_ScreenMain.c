@@ -394,7 +394,7 @@ void ui_ScreenMain_screen_init(void)
     ui_contInputMeter = lv_obj_create(ui_contMeterInput);
     lv_obj_remove_style_all(ui_contInputMeter);
     lv_obj_set_width(ui_contInputMeter, 55);
-    lv_obj_set_height(ui_contInputMeter, lv_pct(17));
+    lv_obj_set_height(ui_contInputMeter, lv_pct(26));
     lv_obj_set_align(ui_contInputMeter, LV_ALIGN_CENTER);
     lv_obj_set_flex_flow(ui_contInputMeter, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ui_contInputMeter, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_BETWEEN);
@@ -407,7 +407,7 @@ void ui_ScreenMain_screen_init(void)
     lv_label_set_text(ui_lblMetersInput, "INPUT");
     lv_obj_set_style_text_color(ui_lblMetersInput, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_lblMetersInput, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_lblMetersInput, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_lblMetersInput, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_lblMetersInput1 = lv_label_create(ui_contInputMeter);
     lv_obj_set_width(ui_lblMetersInput1, LV_SIZE_CONTENT);   /// 1
@@ -418,13 +418,15 @@ void ui_ScreenMain_screen_init(void)
     lv_label_set_text(ui_lblMetersInput1, "-18 dB");
     lv_obj_set_style_text_color(ui_lblMetersInput1, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_lblMetersInput1, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_lblMetersInput1, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_lblMetersInput1, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_barInput = lv_bar_create(ui_contMeterInput);
     lv_bar_set_value(ui_barInput, 75, LV_ANIM_OFF);
     lv_bar_set_start_value(ui_barInput, 0, LV_ANIM_OFF);
-    lv_obj_set_width(ui_barInput, 10);
-    lv_obj_set_height(ui_barInput, 99);
+    lv_obj_set_width(ui_barInput, 21);
+    lv_obj_set_height(ui_barInput, 100);
+    lv_obj_set_x(ui_barInput, 12);
+    lv_obj_set_y(ui_barInput, -11);
     lv_obj_set_align(ui_barInput, LV_ALIGN_CENTER);
     lv_obj_set_style_radius(ui_barInput, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui_barInput, lv_color_hex(0x081A14), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -433,7 +435,7 @@ void ui_ScreenMain_screen_init(void)
     lv_obj_set_style_radius(ui_barInput, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui_barInput, lv_color_hex(0x081A14), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_barInput, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_image_src(ui_barInput, &ui_img_indicator_ver_25seg_png, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_image_src(ui_barInput, &ui_img_indicator_ver_25seg_wide_png, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
     //Compensating for LVGL9.1 draw crash with bar/slider max value when top-padding is nonzero and right-padding is 0
     if(lv_obj_get_style_pad_top(ui_barInput, LV_PART_MAIN) > 0) lv_obj_set_style_pad_right(ui_barInput,
@@ -851,12 +853,16 @@ void ui_ScreenMain_screen_init(void)
 
     ui_contOutputMeter = lv_obj_create(ui_contMeterOutput);
     lv_obj_remove_style_all(ui_contOutputMeter);
-    lv_obj_set_width(ui_contOutputMeter, 55);
-    lv_obj_set_height(ui_contOutputMeter, lv_pct(17));
+    lv_obj_set_width(ui_contOutputMeter, 63);
+    lv_obj_set_height(ui_contOutputMeter, lv_pct(26));
     lv_obj_set_align(ui_contOutputMeter, LV_ALIGN_CENTER);
     lv_obj_set_flex_flow(ui_contOutputMeter, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(ui_contOutputMeter, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_BETWEEN);
     lv_obj_remove_flag(ui_contOutputMeter, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);      /// Flags
+    lv_obj_set_style_pad_left(ui_contOutputMeter, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(ui_contOutputMeter, 5, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(ui_contOutputMeter, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(ui_contOutputMeter, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_lblMetersInput2 = lv_label_create(ui_contOutputMeter);
     lv_obj_set_width(ui_lblMetersInput2, LV_SIZE_CONTENT);   /// 1
@@ -865,7 +871,7 @@ void ui_ScreenMain_screen_init(void)
     lv_label_set_text(ui_lblMetersInput2, "OUTPUT");
     lv_obj_set_style_text_color(ui_lblMetersInput2, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_lblMetersInput2, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_lblMetersInput2, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_lblMetersInput2, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_lblMetersInput3 = lv_label_create(ui_contOutputMeter);
     lv_obj_set_width(ui_lblMetersInput3, LV_SIZE_CONTENT);   /// 1
@@ -876,12 +882,12 @@ void ui_ScreenMain_screen_init(void)
     lv_label_set_text(ui_lblMetersInput3, "-18 dB");
     lv_obj_set_style_text_color(ui_lblMetersInput3, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_lblMetersInput3, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui_lblMetersInput3, &lv_font_montserrat_10, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_lblMetersInput3, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_barOutput = lv_bar_create(ui_contMeterOutput);
     lv_bar_set_value(ui_barOutput, 60, LV_ANIM_OFF);
     lv_bar_set_start_value(ui_barOutput, 0, LV_ANIM_OFF);
-    lv_obj_set_width(ui_barOutput, 10);
+    lv_obj_set_width(ui_barOutput, 21);
     lv_obj_set_height(ui_barOutput, 100);
     lv_obj_set_align(ui_barOutput, LV_ALIGN_BOTTOM_MID);
     lv_obj_set_style_radius(ui_barOutput, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -891,7 +897,7 @@ void ui_ScreenMain_screen_init(void)
     lv_obj_set_style_radius(ui_barOutput, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(ui_barOutput, lv_color_hex(0x081A14), LV_PART_INDICATOR | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_barOutput, 0, LV_PART_INDICATOR | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_image_src(ui_barOutput, &ui_img_indicator_ver_25seg_png, LV_PART_INDICATOR | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_image_src(ui_barOutput, &ui_img_indicator_ver_25seg_wide_png, LV_PART_INDICATOR | LV_STATE_DEFAULT);
 
     //Compensating for LVGL9.1 draw crash with bar/slider max value when top-padding is nonzero and right-padding is 0
     if(lv_obj_get_style_pad_top(ui_barOutput, LV_PART_MAIN) > 0) lv_obj_set_style_pad_right(ui_barOutput,
